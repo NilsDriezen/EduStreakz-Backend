@@ -24,3 +24,8 @@ app.get("/api/progress", async (req, res) => {
 app.listen(process.env.PORT || 3001, () => {
   console.log(`Server running on port ${process.env.PORT || 3001}`);
 });
+
+app.get("/", (req, res) => {
+  res.send("Welkom bij de EduStreakz API!");
+});
+
