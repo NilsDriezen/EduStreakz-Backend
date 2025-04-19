@@ -3,14 +3,17 @@ const { neon } = require('@neondatabase/serverless');
 const cors = require('cors');
 
 const app = express();
-const port = 3001;
 
 // Middleware
-app.use(cors()); // Allow cross-origin requests from the frontend
+app.use(cors({
+    origin: 'https://edu-streakz.vercel.app', // Replace with your frontend URL if different
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json());
 
-// Connect to Neon PostgreSQL database
-const sql = neon('postgresql://neondb_owner:npg_keVmI4MiLG7x@ep-purple-sea-a2c6jvv5-pooler.eu-central-1.aws.neon.tech/edustreakzdb?sslmode=require');
+// Connect to Neon PostgreSQL database using environment variable
+const sql = neon(process.env.DATABASE_URL);
 
 // Sample route to test the server
 app.get('/', (req, res) => {
@@ -60,7 +63,5 @@ app.get('/api/user/:username', async (req, res) => {
     }
 });
 
-// Start the server
-app.listen(port, () => {
-    console.log(`Server running on http://localhost:${port}`);
-});
+// Export the app for Vercel
+module.exports = app;
