@@ -37,6 +37,7 @@ app.post('/api/auth/login', async (req, res) => {
         if (userResult.length === 0) {
             return res.status(401).json({ error: 'Invalid credentials' });
         }
+
         const user = userResult[0];
         const token = jwt.sign({ username: user.username }, process.env.JWT_SECRET || 'your-secret-key', { expiresIn: '1h' });
         res.json({ token });
@@ -62,6 +63,7 @@ const authenticateToken = (req, res, next) => {
 // API to fetch user data (protected route)
 app.get('/api/user/me', authenticateToken, async (req, res) => {
     const username = req.user.username;
+
     try {
         const userResult = await sql`
             SELECT * FROM users WHERE username = ${username}
@@ -121,6 +123,8 @@ app.get('/api/user/:username', async (req, res) => {
             SELECT progress_percentage FROM progress WHERE user_id = ${user.id} AND period = 'weekly'
         `;
         const progress = progressResult[0]?.progress_percentage || 0;
+
+        // Fetch user's game activity
 
         const gamesResult = await sql`
             SELECT game_name, score, level FROM game_activity WHERE user_id = ${user.id}
