@@ -34,6 +34,24 @@ const authenticateToken = (req, res, next) => {
     });
 };
 
+// Middleware to check if user is a teacher
+const requireTeacher = async (req, res, next) => {
+    const client = await pool.connect();
+    try {
+        const result = await client.query('SELECT role FROM users WHERE id = $1', [req.user.userId]);
+        const user = result.rows[0];
+        if (!user || user.role !== 'teacher') {
+            return res.status(403).json({ error: 'Teacher access required' });
+        }
+        next();
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Server error' });
+    } finally {
+        client.release();
+    }
+};
+
 // Initialize database schema
 async function initializeDatabase() {
     const client = await pool.connect();
@@ -53,12 +71,13 @@ async function initializeDatabase() {
                 bio TEXT,
                 education VARCHAR(100),
                 favorite_game VARCHAR(50),
-                friend_count INTEGER DEFAULT 0
+                friend_count INTEGER DEFAULT 0,
+                role VARCHAR(20) NOT NULL DEFAULT 'student' CHECK (role IN ('student', 'teacher'))
             );
 
             CREATE TABLE IF NOT EXISTS games (
                 id SERIAL PRIMARY KEY,
-                user_id INTEGER REFERENCES users(id),
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
                 game_name VARCHAR(50) NOT NULL,
                 score INTEGER DEFAULT 0,
                 level INTEGER DEFAULT 1
@@ -66,28 +85,43 @@ async function initializeDatabase() {
 
             CREATE TABLE IF NOT EXISTS badges (
                 id SERIAL PRIMARY KEY,
-                user_id INTEGER REFERENCES users(id),
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
                 badge_name VARCHAR(50) NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS activities (
                 id SERIAL PRIMARY KEY,
-                user_id INTEGER REFERENCES users(id),
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
                 activity_text VARCHAR(255) NOT NULL,
                 timestamp TIMESTAMP NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS friends (
                 id SERIAL PRIMARY KEY,
-                user_id INTEGER REFERENCES users(id),
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
                 friend_name VARCHAR(50) NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS goals (
                 id SERIAL PRIMARY KEY,
-                user_id INTEGER REFERENCES users(id),
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
                 goal_text VARCHAR(255) NOT NULL,
                 completed BOOLEAN DEFAULT FALSE
+            );
+
+            CREATE TABLE IF NOT EXISTS classes (
+                id SERIAL PRIMARY KEY,
+                class_name VARCHAR(100) NOT NULL,
+                teacher_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS class_members (
+                id SERIAL PRIMARY KEY,
+                class_id INTEGER REFERENCES classes(id) ON DELETE CASCADE,
+                student_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE (class_id, student_id)
             );
         `);
     } catch (err) {
@@ -110,7 +144,7 @@ app.post('/api/auth/login', async (req, res) => {
             return res.status(401).json({ error: 'Invalid credentials' });
         }
         const token = jwt.sign({ userId: user.id, username: user.username }, JWT_SECRET, { expiresIn: '1h' });
-        res.json({ token });
+        res.json({ token, role: user.role });
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: 'Server error' });
@@ -121,13 +155,13 @@ app.post('/api/auth/login', async (req, res) => {
 
 // Signup endpoint
 app.post('/api/auth/signup', async (req, res) => {
-    const { username, email, birthDay, birthMonth, birthYear, password } = req.body;
-    const joinDate = new Date().toISOString().split('T')[0]; // Current date
+    const { username, email, birthDay, birthMonth, birthYear, password, role } = req.body;
+    const joinDate = new Date().toISOString().split('T')[0];
     const client = await pool.connect();
     try {
         const result = await client.query(
-            'INSERT INTO users (username, email, birth_day, birth_month, birth_year, password, join_date) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
-            [username, email, birthDay, birthMonth, birthYear, password, joinDate]
+            'INSERT INTO users (username, email, birth_day, birth_month, birth_year, password, join_date, role) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
+            [username, email, birthDay, birthMonth, birthYear, password, joinDate, role || 'student']
         );
         const user = result.rows[0];
         res.status(201).json({ message: 'User created', user });
@@ -165,6 +199,7 @@ app.get('/api/user/me', authenticateToken, async (req, res) => {
             education: user.education,
             favorite_game: user.favorite_game,
             friend_count: user.friend_count,
+            role: user.role,
             games: gamesResult.rows,
             badges: badgesResult.rows.map(b => b.badge_name),
             activities: activitiesResult.rows.map(a => ({ text: a.activity_text, timestamp: a.timestamp })),
@@ -206,6 +241,126 @@ app.get('/api/community', async (req, res) => {
         message: 'Praat mee in onze community en deel je voortgang!',
         support_email: 'support@edustreakz.com',
     });
+});
+
+// Create a new class (teacher only)
+app.post('/api/classes', authenticateToken, requireTeacher, async (req, res) => {
+    const { class_name } = req.body;
+    if (!class_name) {
+        return res.status(400).json({ error: 'Class name is required' });
+    }
+    const client = await pool.connect();
+    try {
+        const result = await client.query(
+            'INSERT INTO classes (class_name, teacher_id) VALUES ($1, $2) RETURNING *',
+            [class_name, req.user.userId]
+        );
+        res.status(201).json(result.rows[0]);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Server error' });
+    } finally {
+        client.release();
+    }
+});
+
+// Add a student to a class (teacher only)
+app.post('/api/classes/:classId/members', authenticateToken, requireTeacher, async (req, res) => {
+    const { classId } = req.params;
+    const { student_username } = req.body;
+    const client = await pool.connect();
+    try {
+        // Verify class belongs to teacher
+        const classResult = await client.query('SELECT * FROM classes WHERE id = $1 AND teacher_id = $2', [classId, req.user.userId]);
+        if (!classResult.rows[0]) {
+            return res.status(403).json({ error: 'Class not found or not authorized' });
+        }
+
+        // Find student
+        const studentResult = await client.query('SELECT id FROM users WHERE username = $1 AND role = $2', [student_username, 'student']);
+        const student = studentResult.rows[0];
+        if (!student) {
+            return res.status(404).json({ error: 'Student not found' });
+        }
+
+        // Add student to class
+        await client.query('INSERT INTO class_members (class_id, student_id) VALUES ($1, $2)', [classId, student.id]);
+        res.status(201).json({ message: 'Student added to class' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Server error' });
+    } finally {
+        client.release();
+    }
+});
+
+// Get classes for a teacher
+app.get('/api/classes', authenticateToken, requireTeacher, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const result = await client.query('SELECT * FROM classes WHERE teacher_id = $1', [req.user.userId]);
+        res.json(result.rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Server error' });
+    } finally {
+        client.release();
+    }
+});
+
+// Get student progress for a class (teacher only)
+app.get('/api/classes/:classId/progress', authenticateToken, requireTeacher, async (req, res) => {
+    const { classId } = req.params;
+    const client = await pool.connect();
+    try {
+        // Verify class belongs to teacher
+        const classResult = await client.query('SELECT * FROM classes WHERE id = $1 AND teacher_id = $2', [classId, req.user.userId]);
+        if (!classResult.rows[0]) {
+            return res.status(403).json({ error: 'Class not found or not authorized' });
+        }
+
+        const result = await client.query(`
+            SELECT 
+                u.username,
+                u.streak,
+                u.friend_count,
+                SUM(g.score) AS total_score,
+                COUNT(g.id) AS games_played,
+                STRING_AGG(b.badge_name, ', ') AS badges
+            FROM class_members cm
+            JOIN users u ON cm.student_id = u.id
+            LEFT JOIN games g ON u.id = g.user_id
+            LEFT JOIN badges b ON u.id = b.user_id
+            WHERE cm.class_id = $1
+            GROUP BY u.id, u.username, u.streak, u.friend_count
+        `, [classId]);
+        res.json(result.rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Server error' });
+    } finally {
+        client.release();
+    }
+});
+
+// Get classes for a student
+app.get('/api/classes/student', authenticateToken, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const result = await client.query(`
+            SELECT c.id, c.class_name, u.username AS teacher_username
+            FROM class_members cm
+            JOIN classes c ON cm.class_id = c.id
+            JOIN users u ON c.teacher_id = u.id
+            WHERE cm.student_id = $1
+        `, [req.user.userId]);
+        res.json(result.rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Server error' });
+    } finally {
+        client.release();
+    }
 });
 
 app.listen(port, () => {
