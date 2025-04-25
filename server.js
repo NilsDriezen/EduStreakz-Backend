@@ -27,6 +27,47 @@ app.get('/', (req, res) => {
     res.send('EduStreakz Backend is running!');
 });
 
+// Signup endpoint
+app.post('/api/auth/signup', async (req, res) => {
+    const { username, email, birthDay, birthMonth, birthYear, password } = req.body;
+    const birthDate = `${birthYear}-${birthMonth.padStart(2, '0')}-${birthDay.padStart(2, '0')}`;
+
+    try {
+        // Check if the username already exists
+        const existingUser = await sql`
+            SELECT * FROM users WHERE username = ${username}
+        `;
+        if (existingUser.length > 0) {
+            return res.status(400).json({ error: 'Username already exists' });
+        }
+
+        // Insert the new user
+        const userResult = await sql`
+            INSERT INTO users (username, password) VALUES (${username}, ${password}) RETURNING id
+        `;
+        const userId = userResult[0].id;
+
+        // Insert default streak, progress, and game data
+        await sql`
+            INSERT INTO streaks (user_id, streak_days) VALUES (${userId}, 0)
+        `;
+        await sql`
+            INSERT INTO progress (user_id, period, progress_percentage) VALUES (${userId}, 'weekly', 0)
+        `;
+        await sql`
+            INSERT INTO game_activity (user_id, game_name, score, level) VALUES 
+                (${userId}, 'Math Adventure', 0, 1),
+                (${userId}, 'Language Quest', 0, 1),
+                (${userId}, 'Science Explorer', 0, 1)
+        `;
+
+        res.status(201).json({ message: 'User created successfully' });
+    } catch (error) {
+        console.error('Error during signup:', error.stack);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // Login endpoint
 app.post('/api/auth/login', async (req, res) => {
     const { username, password } = req.body;
@@ -37,12 +78,14 @@ app.post('/api/auth/login', async (req, res) => {
         if (userResult.length === 0) {
             return res.status(401).json({ error: 'Invalid credentials' });
         }
-
         const user = userResult[0];
+        if (user.password !== password) {
+            return res.status(401).json({ error: 'Invalid credentials' });
+        }
         const token = jwt.sign({ username: user.username }, process.env.JWT_SECRET || 'your-secret-key', { expiresIn: '1h' });
         res.json({ token });
     } catch (error) {
-        console.error('Error during login:', error);
+        console.error('Error during login:', error.stack);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -63,7 +106,6 @@ const authenticateToken = (req, res, next) => {
 // API to fetch user data (protected route)
 app.get('/api/user/me', authenticateToken, async (req, res) => {
     const username = req.user.username;
-
     try {
         const userResult = await sql`
             SELECT * FROM users WHERE username = ${username}
@@ -95,12 +137,12 @@ app.get('/api/user/me', authenticateToken, async (req, res) => {
             games
         });
     } catch (error) {
-        console.error('Error fetching user data:', error);
+        console.error('Error fetching user data (protected route):', error.stack);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
 
-// API to fetch user data (unprotected, for debugging)
+// API to fetch user data (unprotected, for debugging - remove in production)
 app.get('/api/user/:username', async (req, res) => {
     const { username } = req.params;
     console.log(`Fetching data for username: ${username}`);
@@ -124,8 +166,6 @@ app.get('/api/user/:username', async (req, res) => {
         `;
         const progress = progressResult[0]?.progress_percentage || 0;
 
-        // Fetch user's game activity
-
         const gamesResult = await sql`
             SELECT game_name, score, level FROM game_activity WHERE user_id = ${user.id}
         `;
@@ -138,7 +178,7 @@ app.get('/api/user/:username', async (req, res) => {
             games
         });
     } catch (error) {
-        console.error('Error fetching user data:', error);
+        console.error('Error fetching user data (unprotected route):', error.stack);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
