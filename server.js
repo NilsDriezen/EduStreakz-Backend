@@ -343,18 +343,38 @@ app.get('/api/classes/:classId/progress', authenticateToken, requireTeacher, asy
     }
 });
 
-// Get classes for a student
-app.get('/api/classes/student', authenticateToken, async (req, res) => {
+// Update or insert game score
+app.post('/api/games', authenticateToken, async (req, res) => {
+    const { game_name, score, level } = req.body;
+    if (!game_name || score == null || level == null) {
+        return res.status(400).json({ error: 'game_name, score, and level are required' });
+    }
     const client = await pool.connect();
     try {
-        const result = await client.query(`
-            SELECT c.id, c.class_name, u.username AS teacher_username
-            FROM class_members cm
-            JOIN classes c ON cm.class_id = c.id
-            JOIN users u ON c.teacher_id = u.id
-            WHERE cm.student_id = $1
-        `, [req.user.userId]);
-        res.json(result.rows);
+        // Check if game entry exists
+        const existing = await client.query(
+            'SELECT * FROM games WHERE user_id = $1 AND game_name = $2',
+            [req.user.userId, game_name]
+        );
+        if (existing.rows.length > 0) {
+            // Update existing entry
+            await client.query(
+                'UPDATE games SET score = $1, level = $2 WHERE user_id = $3 AND game_name = $4',
+                [score, level, req.user.userId, game_name]
+            );
+        } else {
+            // Insert new entry
+            await client.query(
+                'INSERT INTO games (user_id, game_name, score, level) VALUES ($1, $2, $3, $4)',
+                [req.user.userId, game_name, score, level]
+            );
+        }
+        // Log activity
+        await client.query(
+            'INSERT INTO activities (user_id, activity_text, timestamp) VALUES ($1, $2, $3)',
+            [req.user.userId, `Wiskunde Avontuur gespeeld - ${score} XP verdiend`, new Date()]
+        );
+        res.status(200).json({ message: 'Score updated' });
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: 'Server error' });
