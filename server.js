@@ -308,6 +308,28 @@ app.get('/api/classes', authenticateToken, requireTeacher, async (req, res) => {
     }
 });
 
+// POST route puntensysteem:
+app.post('/api/games', authenticateToken, async (req, res) => {
+    const { game_name, score, level } = req.body;
+    if (!game_name || typeof score !== 'number' || typeof level !== 'number') {
+        return res.status(400).json({ message: 'Ongeldige data' });
+    }
+
+    try {
+        const newScore = new Score({
+            game_name,
+            score,
+            level,
+            user: req.user.email || req.user.id || 'onbekend'
+        });
+        await newScore.save();
+        res.status(201).json({ message: 'Score opgeslagen' });
+    } catch (err) {
+        res.status(500).json({ message: 'Fout bij opslaan score', error: err.message });
+    }
+});
+
+
 // Get student progress for a class (teacher only)
 app.get('/api/classes/:classId/progress', authenticateToken, requireTeacher, async (req, res) => {
     const { classId } = req.params;
