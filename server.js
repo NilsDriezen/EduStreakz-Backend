@@ -2,8 +2,22 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const { Pool } = require('@neondatabase/serverless');
 const cors = require('cors');
+const jwt = require('jsonwebtoken');
 
 const app = express();
+nd-test-server
+
+// Middleware
+app.use(cors({
+    origin: 'https://edu-streakz.vercel.app',
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
+app.use(express.json());
+
+// Connect to Neon PostgreSQL database
+const sql = neon(process.env.DATABASE_URL);
+
 const port = 3000;
 
 // Database connection
@@ -116,6 +130,7 @@ async function initializeDatabase() {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
 
+
             CREATE TABLE IF NOT EXISTS class_members (
                 id SERIAL PRIMARY KEY,
                 class_id INTEGER REFERENCES classes(id) ON DELETE CASCADE,
@@ -153,11 +168,51 @@ app.post('/api/auth/login', async (req, res) => {
     }
 });
 
+
+// Login endpoint
+app.post('/api/auth/login', async (req, res) => {
+    const { username, password } = req.body;
+    try {
+        const userResult = await sql`
+            SELECT * FROM users WHERE username = ${username}
+        `;
+        if (userResult.length === 0) {
+            return res.status(401).json({ error: 'Invalid credentials' });
+        }
+        // In production, hash passwords and compare securely
+        // For demo purposes, we'll skip password checking
+        const user = userResult[0];
+        const token = jwt.sign({ username: user.username }, process.env.JWT_SECRET || 'your-secret-key', { expiresIn: '1h' });
+        res.json({ token });
+    } catch (error) {
+        console.error('Error during login:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Middleware to authenticate JWT
+const authenticateToken = (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    if (!token) return res.status(401).json({ error: 'Access denied' });
+
+    jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key', (err, user) => {
+        if (err) return res.status(403).json({ error: 'Invalid token' });
+        req.user = user;
+        next();
+    });
+};
+
+// API to fetch user data (protected route)
+app.get('/api/user/me', authenticateToken, async (req, res) => {
+    const username = req.user.username;
+
 // Signup endpoint
 app.post('/api/auth/signup', async (req, res) => {
     const { username, email, birthDay, birthMonth, birthYear, password, role } = req.body;
     const joinDate = new Date().toISOString().split('T')[0];
     const client = await pool.connect();
+
     try {
         const result = await client.query(
             'INSERT INTO users (username, email, birth_day, birth_month, birth_year, password, join_date, role) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
@@ -183,11 +238,72 @@ app.get('/api/user/me', authenticateToken, async (req, res) => {
             return res.status(404).json({ error: 'User not found' });
         }
 
+        const user = userResult[0];
+
+        // Fetch user's streak
+        const streakResult = await sql`
+            SELECT streak_days FROM streaks WHERE user_id = ${user.id}
+        `;
+        const streak = streakResult[0]?.streak_days || 0;
+
+        // Fetch user's progress
+        const progressResult = await sql`
+            SELECT progress_percentage FROM progress WHERE user_id = ${user.id} AND period = 'weekly'
+        `;
+        const progress = progressResult[0]?.progress_percentage || 0;
+
+        // Fetch user's game activity
+        const gamesResult = await sql`
+            SELECT game_name, score, level FROM game_activity WHERE user_id = ${user.id}
+        `;
+        const games = gamesResult;
+
+        res.json({
+            username: user.username,
+            streak,
+            progress,
+            games
+        });
+    } catch (error) {
+        console.error('Error fetching user data:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Keep the old endpoint for testing (optional, remove in production)
+app.get('/api/user/:username', async (req, res) => {
+    const { username } = req.params;
+    try {
+        const userResult = await sql`
+            SELECT * FROM users WHERE username = ${username}
+        `;
+        if (userResult.length === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        const user = userResult[0];
+
+        const streakResult = await sql`
+            SELECT streak_days FROM streaks WHERE user_id = ${user.id}
+        `;
+        const streak = streakResult[0]?.streak_days || 0;
+
+        const progressResult = await sql`
+            SELECT progress_percentage FROM progress WHERE user_id = ${user.id} AND period = 'weekly'
+        `;
+        const progress = progressResult[0]?.progress_percentage || 0;
+
+        const gamesResult = await sql`
+            SELECT game_name, score, level FROM game_activity WHERE user_id = ${user.id}
+        `;
+        const games = gamesResult;
+
+
         const gamesResult = await client.query('SELECT * FROM games WHERE user_id = $1', [req.user.userId]);
         const badgesResult = await client.query('SELECT * FROM badges WHERE user_id = $1', [req.user.userId]);
         const activitiesResult = await client.query('SELECT * FROM activities WHERE user_id = $1 ORDER BY timestamp DESC', [req.user.userId]);
         const friendsResult = await client.query('SELECT * FROM friends WHERE user_id = $1', [req.user.userId]);
         const goalsResult = await client.query('SELECT * FROM goals WHERE user_id = $1', [req.user.userId]);
+
 
         res.json({
             username: user.username,
@@ -383,6 +499,11 @@ app.post('/api/games', authenticateToken, async (req, res) => {
     }
 });
 
+
+// Export the app for Vercel
+module.exports = app;
+
 app.listen(port, () => {
     console.log(`Server running on port ${port}`);
 });
+
