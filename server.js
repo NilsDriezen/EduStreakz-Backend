@@ -309,7 +309,7 @@ app.get('/api/classes', authenticateToken, requireTeacher, async (req, res) => {
 });
 
 // POST route puntensysteem:
-app.post('/api/games', authenticateToken, async (req, res) => {
+app.post('/api/games', async (req, res) => {
     const { game_name, score, level } = req.body;
     if (!game_name || typeof score !== 'number' || typeof level !== 'number') {
         return res.status(400).json({ message: 'Ongeldige data' });
@@ -320,7 +320,7 @@ app.post('/api/games', authenticateToken, async (req, res) => {
             game_name,
             score,
             level,
-            user: req.user.email || req.user.id || 'onbekend'
+            user: 'gast'  // verwijder dit veld weg als het niet nodig is(om te testen)
         });
         await newScore.save();
         res.status(201).json({ message: 'Score opgeslagen' });
@@ -328,6 +328,17 @@ app.post('/api/games', authenticateToken, async (req, res) => {
         res.status(500).json({ message: 'Fout bij opslaan score', error: err.message });
     }
 });
+
+// GET route die alles ophaalt (zonder gebruikersfilter):
+app.get('/api/games', async (req, res) => {
+    try {
+        const scores = await Score.find().sort({ score: -1 });
+        res.json(scores);
+    } catch (err) {
+        res.status(500).json({ message: 'Fout bij ophalen scores', error: err.message });
+    }
+});
+
 
 
 // Get student progress for a class (teacher only)
