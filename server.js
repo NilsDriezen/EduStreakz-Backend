@@ -66,8 +66,7 @@ const requireTeacher = async (req, res, next) => {
     }
 };
 
-// middleware controle van JWT-token:
-const jwt = require('jsonwebtoken');
+
 
 function authenticateToken(req, res, next) {
     const authHeader = req.headers['authorization'];
