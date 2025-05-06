@@ -66,6 +66,42 @@ const requireTeacher = async (req, res, next) => {
     }
 };
 
+// middleware controle van JWT-token:
+const jwt = require('jsonwebtoken');
+
+function authenticateToken(req, res, next) {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    if (!token) return res.sendStatus(401);
+
+    jwt.verify(token, process.env.JWT_SECRET || 'geheime_sleutel', (err, user) => {
+        if (err) return res.sendStatus(403);
+        req.user = user;
+        next();
+    });
+}
+// aanpassing POST route
+app.post('/api/games', authenticateToken, async (req, res) => {
+    const { game_name, score, level } = req.body;
+    if (!game_name || typeof score !== 'number' || typeof level !== 'number') {
+        return res.status(400).json({ message: 'Ongeldige data' });
+    }
+
+    try {
+        const newScore = new Score({
+            game_name,
+            score,
+            level,
+            user: req.user.email || req.user.id || 'onbekend'
+        });
+        await newScore.save();
+        res.status(201).json({ message: 'Score opgeslagen' });
+    } catch (err) {
+        res.status(500).json({ message: 'Fout bij opslaan score', error: err.message });
+    }
+});
+
+
 // Initialize database schema
 async function initializeDatabase() {
     const client = await pool.connect();
