@@ -9,7 +9,7 @@ nd-test-server
 
 // Middleware
 app.use(cors({
-    origin: 'https://edu-streakz.vercel.app',
+    origin: ['https://edu-streakz.vercel.app', 'http://localhost:3000', 'https://edu-streakz.vercel.app']
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
@@ -24,13 +24,13 @@ const port = 3000;
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL || 'postgresql://team04_owner:KfC3X0zR5WqC@ep-solitary-bird-a58h7v6u.us-east-2.aws.neon.tech/team04?sslmode=require',
 });
-
+// 2keer app.use(cors( zorgt voor conflicten
 // Middleware
-app.use(cors({
-    origin: ['http://localhost:3000', 'https://edu-streakz.vercel.app'],
-    credentials: true,
-}));
-app.use(express.json());
+// app.use(cors({
+//     origin: ['http://localhost:3000', 'https://edu-streakz.vercel.app'],
+//     credentials: true,
+// }));
+// app.use(express.json());
 
 // JWT Secret
 const JWT_SECRET = process.env.JWT_SECRET || 'mysecretkey';
@@ -68,17 +68,7 @@ const requireTeacher = async (req, res, next) => {
 
 
 
-function authenticateToken(req, res, next) {
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
-    if (!token) return res.sendStatus(401);
 
-    jwt.verify(token, process.env.JWT_SECRET || 'geheime_sleutel', (err, user) => {
-        if (err) return res.sendStatus(403);
-        req.user = user;
-        next();
-    });
-}
 // aanpassing POST route
 app.post('/api/games', authenticateToken, async (req, res) => {
     const { game_name, score, level } = req.body;
@@ -87,6 +77,7 @@ app.post('/api/games', authenticateToken, async (req, res) => {
     }
 
     try {
+        const Score = require('./models/score');
         const newScore = new Score({
             game_name,
             score,
@@ -194,26 +185,26 @@ async function initializeDatabase() {
 initializeDatabase();
 
 // Login endpoint
-app.post('/api/auth/login', async (req, res) => {
-    const { username, password } = req.body;
-    const client = await pool.connect();
-    try {
-        const result = await client.query('SELECT * FROM users WHERE username = $1 AND password = $2', [username, password]);
-        const user = result.rows[0];
-        if (!user) {
-            return res.status(401).json({ error: 'Invalid credentials' });
-        }
-        const token = jwt.sign({ userId: user.id, username: user.username }, JWT_SECRET, { expiresIn: '1h' });
-        res.json({ token, role: user.role });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Server error' });
-    } finally {
-        client.release();
-    }
-});
+// app.post('/api/auth/login', async (req, res) => {
+//     const { username, password } = req.body;
+//     const client = await pool.connect();
+//     try {
+//         const result = await client.query('SELECT * FROM users WHERE username = $1 AND password = $2', [username, password]);
+//         const user = result.rows[0];
+//         if (!user) {
+//             return res.status(401).json({ error: 'Invalid credentials' });
+//         }
+//         const token = jwt.sign({ userId: user.id, username: user.username }, JWT_SECRET, { expiresIn: '1h' });
+//         res.json({ token, role: user.role });
+//     } catch (err) {
+//         console.error(err);
+//         res.status(500).json({ error: 'Server error' });
+//     } finally {
+//         client.release();
+//     }
+// });
 
-
+// dubbele versie van app.post zorgt voor conflicten; als je beide wil, noem het dan anders al is het met een andere hoofdletter.new Score
 // Login endpoint
 app.post('/api/auth/login', async (req, res) => {
     const { username, password } = req.body;
