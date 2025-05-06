@@ -2,7 +2,7 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const { Pool } = require('@neondatabase/serverless');
 const cors = require('cors');
-const jwt = require('jsonwebtoken');
+
 
 const app = express();
 nd-test-server
