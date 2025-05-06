@@ -9,7 +9,7 @@ nd-test-server
 
 // Middleware
 app.use(cors({
-    origin: ['https://edu-streakz.vercel.app', 'http://localhost:3000', 'https://edu-streakz.vercel.app']
+    origin: ['https://edu-streakz.vercel.app', 'http://localhost:3000', 'https://edu-streakz.vercel.app'],
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
