@@ -1,3 +1,5 @@
+import dotenv from "dotenv"; // npm install dotenv
+dotenv.config();
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const { Pool } = require('@neondatabase/serverless');
