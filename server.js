@@ -279,8 +279,8 @@ app.get('/api/user/me', authenticateToken, async (req, res) => {
     const client = await pool.connect();
     try {
         const userResult = await client.query('SELECT * FROM users WHERE id = $1', [req.user.userId]);
-        const user = userResult.rows[0];
-        if (!user) {
+        const User = userResult.rows[0];
+        if (!User) {
             return res.status(404).json({ error: 'User not found' });
         }
 
@@ -338,10 +338,10 @@ app.get('/api/user/:username', async (req, res) => {
         `;
         const progress = progressResult[0]?.progress_percentage || 0;
 
-        const gamesResult = await sql`
+        const GamesResult = await sql`
             SELECT game_name, score, level FROM game_activity WHERE user_id = ${user.id}
         `;
-        const games = gamesResult;
+        const games = GamesResult;
 
 
         const gamesResult = await client.query('SELECT * FROM games WHERE user_id = $1', [req.user.userId]);
