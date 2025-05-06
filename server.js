@@ -100,6 +100,16 @@ app.post('/api/games', authenticateToken, async (req, res) => {
         res.status(500).json({ message: 'Fout bij opslaan score', error: err.message });
     }
 });
+//  GET route voor gebruiker-specifieke scores
+app.get('/api/mijn-scores', authenticateToken, async (req, res) => {
+    try {
+        const scores = await Score.find({ user: req.user.email || req.user.id }).sort({ score: -1 });
+        res.json(scores);
+    } catch (err) {
+        res.status(500).json({ message: 'Fout bij ophalen scores', error: err.message });
+    }
+});
+
 
 
 // Initialize database schema
