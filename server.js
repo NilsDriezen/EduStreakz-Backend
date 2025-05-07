@@ -267,7 +267,8 @@ app.post('/api/games', authenticateToken, async (req, res) => {
         client.release();
     }
 });
-//  endpoint SCORES (voor het puntensysteem
+
+//  endpoint SCORES (voor het puntensysteem)
 app.post('/api/scores', authenticateToken, async (req, res) => {
     const { game_name, score, level } = req.body;
     if (!game_name || score == null || level == null) {
@@ -275,10 +276,12 @@ app.post('/api/scores', authenticateToken, async (req, res) => {
     }
     const client = await pool.connect();
     try {
+        // Check of het spel al bestaat voor deze gebruiker
         const existing = await client.query(
             'SELECT * FROM games WHERE user_id = $1 AND game_name = $2',
             [req.user.userId, game_name]
         );
+
         if (existing.rows.length > 0) {
             await client.query(
                 'UPDATE games SET score = $1, level = $2 WHERE user_id = $3 AND game_name = $4',
@@ -290,7 +293,14 @@ app.post('/api/scores', authenticateToken, async (req, res) => {
                 [req.user.userId, game_name, score, level]
             );
         }
-        res.status(200).json({ message: 'Score updated' });
+
+        // Update de total_points in de users tabel
+        await client.query(
+            'UPDATE users SET total_points = total_points + $1 WHERE id = $2',
+            [score, req.user.userId]
+        );
+
+        res.status(200).json({ message: 'Score en punten geüpdatet' });
     } catch (err) {
         console.error('Error saving score:', err);
         res.status(500).json({ error: 'Server error' });
@@ -298,6 +308,7 @@ app.post('/api/scores', authenticateToken, async (req, res) => {
         client.release();
     }
 });
+
 
 
 
