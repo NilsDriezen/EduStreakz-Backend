@@ -215,6 +215,39 @@ app.get('/api/user/me', authenticateToken, async (req, res) => {
     }
 });
 
+// Update user profile data
+app.put('/api/user/update', authenticateToken, async (req, res) => {
+    const { bio, education, favorite_game, email } = req.body;
+    const client = await pool.connect();
+    try {
+        const updates = {};
+        if (bio !== undefined) updates.bio = bio;
+        if (education !== undefined) updates.education = education;
+        if (favorite_game !== undefined) updates.favorite_game = favorite_game;
+        if (email !== undefined) updates.email = email;
+
+        if (Object.keys(updates).length === 0) {
+            return res.status(400).json({ error: 'No fields provided to update' });
+        }
+
+        const fields = Object.keys(updates);
+        const values = Object.values(updates);
+        const setClause = fields.map((field, index) => `${field} = $${index + 1}`).join(', ');
+        values.push(req.user.userId);
+
+        await client.query(
+            `UPDATE users SET ${setClause} WHERE id = $${fields.length + 1}`,
+            values
+        );
+        res.status(200).json({ message: 'Profile updated successfully' });
+    } catch (err) {
+        console.error('Error updating user data:', err);
+        res.status(500).json({ error: 'Server error' });
+    } finally {
+        client.release();
+    }
+});
+
 // Get user-specific scores
 app.get('/api/mijn-scores', authenticateToken, async (req, res) => {
     const client = await pool.connect();
