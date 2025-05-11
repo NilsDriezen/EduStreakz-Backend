@@ -321,6 +321,7 @@ app.get('/api/leaderboard', async (req, res) => {
             FROM users u
             LEFT JOIN games g ON u.id = g.user_id
             GROUP BY u.id, u.username
+            HAVING SUM(g.score) IS NOT NULL
             ORDER BY total_score DESC LIMIT 3
         `);
         res.json(result.rows);
