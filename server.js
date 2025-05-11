@@ -309,8 +309,27 @@ app.post('/api/scores', authenticateToken, async (req, res) => {
     }
 });
 
-
-
+// Get score van een game. (Voor correct gebruikt check schattenjacht.js in de frontend)
+app.get('/api/score/initial', authenticateToken, async (req, res) => {
+    const { game_name } = req.query;
+    if (!game_name) {
+        return res.status(400).json({ error: 'game_name is required' });
+    }
+    const client = await pool.connect();
+    try {
+        const result = await client.query(
+            'SELECT score FROM games WHERE user_id = $1 AND game_name = $2 ORDER BY id DESC LIMIT 1',
+            [req.user.userId, game_name]
+        );
+        const initialScore = result.rows.length > 0 ? result.rows[0].score : 0;
+        res.json({ score: initialScore });
+    } catch (err) {
+        console.error('Error fetching initial score:', err);
+        res.status(500).json({ error: 'Server error' });
+    } finally {
+        client.release();
+    }
+});
 
 // Leaderboard endpoint
 app.get('/api/leaderboard', async (req, res) => {
