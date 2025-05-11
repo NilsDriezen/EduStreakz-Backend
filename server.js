@@ -393,8 +393,29 @@ app.get('/api/community', async (req, res) => {
     });
 });
 
-// Add a student to a class (teacher only)
-app.post('/api/classes/:classId/members', authenticateToken, requireTeacher, async (req, res) => {
+// Create a new class
+app.post('/api/classes', authenticateToken, async (req, res) => {
+    const { class_name } = req.body;
+    const client = await pool.connect();
+    try {
+        if (!class_name) {
+            return res.status(400).json({ error: 'Class name is required' });
+        }
+        const result = await client.query(
+            'INSERT INTO classes (class_name, teacher_id, created_at) VALUES ($1, $2, $3) RETURNING *',
+            [class_name, req.user.userId, new Date()]
+        );
+        res.status(201).json(result.rows[0]);
+    } catch (err) {
+        console.error('Error creating class:', err);
+        res.status(500).json({ error: 'Server error' });
+    } finally {
+        client.release();
+    }
+});
+
+// Add a student to a class
+app.post('/api/classes/:classId/members', authenticateToken, async (req, res) => {
     const { classId } = req.params;
     const { student_username } = req.body;
     const client = await pool.connect();
