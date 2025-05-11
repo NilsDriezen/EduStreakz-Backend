@@ -485,19 +485,37 @@ app.get('/api/classes/:classId/progress', authenticateToken, requireTeacher, asy
     }
 });
 
-// Get classes a student is enrolled in
+// Get classes a student is enrolled in, including the teacher's name
 app.get('/api/student/classes', authenticateToken, async (req, res) => {
     const client = await pool.connect();
     try {
         const result = await client.query(`
-            SELECT c.id, c.class_name, c.teacher_id, c.created_at
+            SELECT c.id, c.class_name, c.teacher_id, c.created_at, u.username AS teacher_name
             FROM class_members cm
             JOIN classes c ON cm.class_id = c.id
+            JOIN users u ON c.teacher_id = u.id
             WHERE cm.student_id = $1
         `, [req.user.userId]);
         res.json(result.rows);
     } catch (err) {
         console.error('Error fetching student classes:', err);
+        res.status(500).json({ error: 'Server error' });
+    } finally {
+        client.release();
+    }
+});
+
+// Get the number of students in a specific class
+app.get('/api/classes/:classId/student-count', authenticateToken, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const result = await client.query(
+            'SELECT COUNT(*) AS count FROM class_members WHERE class_id = $1',
+            [req.params.classId]
+        );
+        res.json({ count: result.rows[0].count });
+    } catch (err) {
+        console.error('Error fetching student count:', err);
         res.status(500).json({ error: 'Server error' });
     } finally {
         client.release();
