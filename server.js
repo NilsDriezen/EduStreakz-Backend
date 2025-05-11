@@ -485,5 +485,24 @@ app.get('/api/classes/:classId/progress', authenticateToken, requireTeacher, asy
     }
 });
 
+// Get classes a student is enrolled in
+app.get('/api/student/classes', authenticateToken, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const result = await client.query(`
+            SELECT c.id, c.class_name, c.teacher_id, c.created_at
+            FROM class_members cm
+            JOIN classes c ON cm.class_id = c.id
+            WHERE cm.student_id = $1
+        `, [req.user.userId]);
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Error fetching student classes:', err);
+        res.status(500).json({ error: 'Server error' });
+    } finally {
+        client.release();
+    }
+});
+
 // Export the app for Vercel
 module.exports = app;
