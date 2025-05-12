@@ -347,6 +347,8 @@ app.post('/api/user/update-streak', authenticateToken, async (req, res) => {
             'SELECT streak FROM users WHERE id = $1',
             [req.user.userId]
         );
+        console.log("userResult: ", userResult);
+        console.log("userResult.row[0]", userResult.rows[0]);
         let currentStreak = userResult.rows[0].streak || 0;
         console.log("Current streak: ", currentStreak);
 
