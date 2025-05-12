@@ -290,7 +290,7 @@ app.post('/api/games', authenticateToken, async (req, res) => {
         }
         await client.query(
             'INSERT INTO activities (user_id, activity_text, timestamp) VALUES ($1, $2, $3)',
-            [req.user.userId, `${game_name} gespeeld - ${score} XP verdiend`, new Date()]
+            [req.user.userId, game_name, new Date()]
         );
         res.status(200).json({ message: 'Score updated' });
     } catch (err) {
