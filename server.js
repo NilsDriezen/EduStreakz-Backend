@@ -265,7 +265,7 @@ app.get('/api/mijn-scores', authenticateToken, async (req, res) => {
     }
 });
 
-// Update or insert game score
+// Update or insert game score.
 app.post('/api/games', authenticateToken, async (req, res) => {
     const { game_name, score, level } = req.body;
     if (!game_name || score == null || level == null) {
