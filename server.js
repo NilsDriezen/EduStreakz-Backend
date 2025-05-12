@@ -322,6 +322,99 @@ app.post('/api/user/log-activity', authenticateToken, async (req, res) => {
     }
 });
 
+// Update user streak based on daily game completion
+app.post('/api/user/update-streak', authenticateToken, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        // Get today's date (midnight to midnight)
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const tomorrow = new Date(today);
+        tomorrow.setDate(today.getDate() + 1);
+
+        // Check if the user completed a game today
+        const todayCompletions = await client.query(
+            `SELECT * FROM activities 
+             WHERE user_id = $1 
+             AND activity_text LIKE 'Completed%' 
+             AND timestamp >= $2 
+             AND timestamp < $3`,
+            [req.user.userId, today, tomorrow]
+        );
+
+        // Get the user's current streak and last completion date
+        const userResult = await client.query(
+            'SELECT streak FROM users WHERE id = $1',
+            [req.user.userId]
+        );
+        let currentStreak = userResult.rows[0].streak || 0;
+
+        // Find the last game completion date before today
+        const lastCompletion = await client.query(
+            `SELECT timestamp FROM activities 
+             WHERE user_id = $1 
+             AND activity_text LIKE 'Completed%' 
+             AND timestamp < $2 
+             ORDER BY timestamp DESC LIMIT 1`,
+            [req.user.userId, today]
+        );
+
+        let newStreak = currentStreak;
+
+        if (todayCompletions.rows.length > 0) {
+            // User completed a game today
+            if (lastCompletion.rows.length > 0) {
+                const lastCompletionDate = new Date(lastCompletion.rows[0].timestamp);
+                lastCompletionDate.setHours(0, 0, 0, 0);
+                const yesterday = new Date(today);
+                yesterday.setDate(today.getDate() - 1);
+
+                if (lastCompletionDate.getTime() === yesterday.getTime()) {
+                    // Last completion was yesterday, increment streak
+                    newStreak = currentStreak + 1;
+                } else if (lastCompletionDate.getTime() < yesterday.getTime()) {
+                    // Last completion was before yesterday, reset streak to 1
+                    newStreak = 1;
+                }
+                // If last completion was earlier today, streak stays the same
+            } else {
+                // No prior completions, start streak at 1
+                newStreak = 1;
+            }
+        } else {
+            // No completion today, check if streak should reset
+            if (lastCompletion.rows.length > 0) {
+                const lastCompletionDate = new Date(lastCompletion.rows[0].timestamp);
+                lastCompletionDate.setHours(0, 0, 0, 0);
+                const yesterday = new Date(today);
+                yesterday.setDate(today.getDate() - 1);
+
+                if (lastCompletionDate.getTime() < yesterday.getTime()) {
+                    // Last completion was before yesterday, reset streak
+                    newStreak = 0;
+                }
+                // If last completion was yesterday, streak stays the same
+            } else {
+                // No completions ever, streak remains 0
+                newStreak = 0;
+            }
+        }
+
+        // Update the user's streak
+        await client.query(
+            'UPDATE users SET streak = $1 WHERE id = $2',
+            [newStreak, req.user.userId]
+        );
+
+        res.status(200).json({ message: 'Streak updated', streak: newStreak });
+    } catch (err) {
+        console.error('Error updating streak:', err);
+        res.status(500).json({ error: 'Server error' });
+    } finally {
+        client.release();
+    }
+});
+
 //  endpoint SCORES (voor het puntensysteem)
 app.post('/api/scores', authenticateToken, async (req, res) => {
     const { game_name, score, level } = req.body;
@@ -338,7 +431,7 @@ app.post('/api/scores', authenticateToken, async (req, res) => {
 
         if (existing.rows.length > 0) {
             await client.query(
-                'UPDATE games SET score = $1, level = $2 WHERE user_id = $3 AND game_name = $4',
+                's games SET score = $1, level = $2 WHERE user_id = $3 AND game_name = $4',
                 [score, level, req.user.userId, game_name]
             );
         } else {
