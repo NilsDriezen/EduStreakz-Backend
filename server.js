@@ -301,6 +301,27 @@ app.post('/api/games', authenticateToken, async (req, res) => {
     }
 });
 
+// Log a user activity with a specific timestamp
+app.post('/api/user/log-activity', authenticateToken, async (req, res) => {
+    const { activity_text, timestamp } = req.body;
+    if (!activity_text || !timestamp) {
+        return res.status(400).json({ error: 'activity_text and timestamp are required' });
+    }
+    const client = await pool.connect();
+    try {
+        await client.query(
+            'INSERT INTO activities (user_id, activity_text, timestamp) VALUES ($1, $2, $3)',
+            [req.user.userId, activity_text, timestamp]
+        );
+        res.status(200).json({ message: 'Activity logged successfully' });
+    } catch (err) {
+        console.error('Error logging activity:', err);
+        res.status(500).json({ error: 'Server error' });
+    } finally {
+        client.release();
+    }
+});
+
 //  endpoint SCORES (voor het puntensysteem)
 app.post('/api/scores', authenticateToken, async (req, res) => {
     const { game_name, score, level } = req.body;
