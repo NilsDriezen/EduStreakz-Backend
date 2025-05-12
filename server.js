@@ -332,9 +332,44 @@ app.post('/api/user/update-streak', authenticateToken, async (req, res) => {
         const tomorrow = new Date(today);
         tomorrow.setDate(today.getDate() + 1);
 
-        // List of known game names
+        // Fetch distinct game names from the games table
         const gameNamesResult = await client.query('SELECT DISTINCT game_name FROM games');
         const gameNames = gameNamesResult.rows.map(row => row.game_name);
+
+        // Check if there are any game names; if not, reset streak to 0
+        if (gameNames.length === 0) {
+            await client.query(
+                'UPDATE users SET streak = 0 WHERE id = $1',
+                [req.user.userId]
+            );
+            return res.status(200).json({ message: 'Streak updated', streak: 0 });
+        }
+
+        // Get the user's current streak
+        const userResult = await client.query(
+            'SELECT streak FROM users WHERE id = $1',
+            [req.user.userId]
+        );
+        let currentStreak = userResult.rows[0].streak || 0;
+
+        // Check if the most recent activity is from today
+        const lastActivity = await client.query(
+            `SELECT timestamp FROM activities 
+             WHERE user_id = $1 
+             AND activity_text = ANY($2) 
+             ORDER BY timestamp DESC LIMIT 1`,
+            [req.user.userId, gameNames]
+        );
+
+        if (lastActivity.rows.length > 0) {
+            const lastActivityDate = new Date(lastActivity.rows[0].timestamp);
+            lastActivityDate.setHours(0, 0, 0, 0);
+
+            // If the most recent activity is from today, return current streak
+            if (lastActivityDate.getTime() === today.getTime()) {
+                return res.status(200).json({ message: 'Streak already updated today', streak: currentStreak });
+            }
+        }
 
         // Check if the user completed a game today
         const todayCompletions = await client.query(
@@ -345,13 +380,6 @@ app.post('/api/user/update-streak', authenticateToken, async (req, res) => {
              AND timestamp < $4`,
             [req.user.userId, gameNames, today, tomorrow]
         );
-
-        // Get the user's current streak
-        const userResult = await client.query(
-            'SELECT streak FROM users WHERE id = $1',
-            [req.user.userId]
-        );
-        let currentStreak = userResult.rows[0].streak || 0;
 
         // Find the last game completion date before today
         const lastCompletion = await client.query(
@@ -380,7 +408,7 @@ app.post('/api/user/update-streak', authenticateToken, async (req, res) => {
                     // Last completion was before yesterday, reset streak to 1
                     newStreak = 1;
                 }
-                // If last completion was earlier today, streak stays the same
+                // If last completion was earlier today, streak stays the same (handled above)
             } else {
                 // No prior completions, start streak at 1
                 newStreak = 1;
