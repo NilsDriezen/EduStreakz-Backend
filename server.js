@@ -348,6 +348,7 @@ app.post('/api/user/update-streak', authenticateToken, async (req, res) => {
             [req.user.userId]
         );
         let currentStreak = userResult.rows[0].streak || 0;
+        console.log("Current streak: ", currentStreak);
 
         // Find the last game completion date before today
         const lastCompletion = await client.query(
